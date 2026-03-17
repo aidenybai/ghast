@@ -1,0 +1,54 @@
+name: ghast
+options:
+  bundleIdPrefix: com.ghast
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  minimumXcodeGenVersion: "2.38.0"
+
+settings:
+  base:
+    SWIFT_OBJC_BRIDGING_HEADER: ghast-Bridging-Header.h
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    SWIFT_VERSION: "5.9"
+    CODE_SIGN_ENTITLEMENTS: ghast.entitlements
+    INFOPLIST_FILE: Resources/Info.plist
+
+targets:
+  ghast:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        type: group
+    resources:
+      - path: Resources
+        type: group
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ghast.app
+        PRODUCT_NAME: ghast
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/ghostty/macos"
+        HEADER_SEARCH_PATHS:
+          - "$(PROJECT_DIR)"
+        OTHER_LDFLAGS:
+          - "-lc++"
+          - "-framework"
+          - Metal
+          - "-framework"
+          - QuartzCore
+          - "-framework"
+          - IOSurface
+          - "-framework"
+          - UniformTypeIdentifiers
+          - "-framework"
+          - Carbon
+    dependencies:
+      - framework: ghostty/macos/GhosttyKit.xcframework
+        embed: false

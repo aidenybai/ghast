@@ -1,0 +1,24 @@
+# Xcode
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+
+# Ghostty build artifacts (large)
+ghostty/zig-out/
+ghostty/zig-cache/
+ghostty/.zig-cache/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
