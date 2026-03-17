@@ -50,9 +50,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "ghast"
         window.backgroundColor = GhosttyManager.shared.backgroundColor
         window.isOpaque = GhosttyManager.shared.backgroundOpacity >= 1.0
-        window.center()
         window.delegate = self
         window.makeKeyAndOrderFront(nil)
+        window.zoom(nil)
 
         tabManager.window = window
     }

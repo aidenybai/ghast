@@ -56,7 +56,7 @@ class TerminalView: NSView, NSTextInputClient {
         config.working_directory = UnsafePointer(cWorkingDir)
 
         self.surface = ghostty_surface_new(app, &config)
-        cWorkingDir.map { free($0) }
+        if let ptr = cWorkingDir { free(ptr) }
 
         guard let surface else {
             print("Failed to create ghostty surface")

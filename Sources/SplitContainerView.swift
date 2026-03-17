@@ -30,10 +30,10 @@ class SplitContainerView: NSView {
             return ObjectIdentifier(tv)
         })
 
-        // Hide stale terminal views
+        // Remove stale terminal views
         for subview in subviews where subview is TerminalView {
             if !activeViews.contains(ObjectIdentifier(subview)) {
-                subview.isHidden = true
+                subview.removeFromSuperview()
             }
         }
 
@@ -156,7 +156,8 @@ class SplitContainerView: NSView {
         }
 
         override func mouseDown(with event: NSEvent) {
-            dragStartPoint = superview!.convert(event.locationInWindow, from: nil)
+            guard let sv = superview else { return }
+            dragStartPoint = sv.convert(event.locationInWindow, from: nil)
             if case .split(_, _, _, let ratio) = splitNode?.content {
                 dragStartRatio = ratio
             }

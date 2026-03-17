@@ -493,11 +493,20 @@ struct TerminalContainerView: NSViewRepresentable {
 
         let tabLookup: (UUID) -> Tab? = { id in ws.tabs.first { $0.id == id } }
 
-        let inSplitMode = ws.splitLayout != nil
-            && ws.splitLayout!.allTabIds.count > 1
-            && ws.splitLayout!.allTabIds.contains(selectedTab.id)
+        // Clean up stale tab IDs from split layout
+        if let layout = ws.splitLayout {
+            let tabIds = Set(ws.tabs.map { $0.id })
+            for splitTabId in layout.allTabIds where !tabIds.contains(splitTabId) {
+                layout.removeTab(splitTabId)
+            }
+            if layout.allTabIds.count <= 1 {
+                ws.splitLayout = nil
+            }
+        }
 
-        if inSplitMode, let layout = ws.splitLayout {
+        if let layout = ws.splitLayout,
+           layout.allTabIds.count > 1,
+           layout.allTabIds.contains(selectedTab.id) {
             // Split mode: show multiple tabs via SplitContainerView
             let splitContainer: SplitContainerView
             if let existing = container.subviews.compactMap({ $0 as? SplitContainerView }).first {

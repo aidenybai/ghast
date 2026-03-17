@@ -84,6 +84,14 @@ final class TabManager: ObservableObject {
     }
 
     func closeWorkspace(_ id: UUID) {
+        // Clean up terminal views before removing
+        if let ws = workspaces.first(where: { $0.id == id }) {
+            for tab in ws.tabs {
+                tab.terminalView?.removeFromSuperview()
+            }
+            ws.splitLayout = nil
+        }
+
         workspaceSubs.removeValue(forKey: id)
         workspaces.removeAll { $0.id == id }
 
