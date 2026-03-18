@@ -82,9 +82,9 @@ struct WorkspaceSidebar: View {
                         WorkspaceItemView(
                             workspace: workspace,
                             isSelected: workspace.id == tabManager.selectedWorkspaceId,
+                            onSelect: { tabManager.selectWorkspace(workspace.id) },
                             onClose: { tabManager.closeWorkspace(workspace.id) }
                         )
-                        .onTapGesture { tabManager.selectWorkspace(workspace.id) }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -99,8 +99,12 @@ struct WorkspaceSidebar: View {
 struct WorkspaceItemView: View {
     @ObservedObject var workspace: Workspace
     let isSelected: Bool
+    let onSelect: () -> Void
     let onClose: () -> Void
     @State private var isHovering = false
+    @State private var isEditing = false
+    @State private var editText = ""
+    @FocusState private var isTextFieldFocused: Bool
 
     /// The selected tab's title, used for the subtitle line.
     private var activeTabTitle: String {
@@ -118,13 +122,33 @@ struct WorkspaceItemView: View {
         return dir
     }
 
+    private func commitEdit() {
+        let trimmed = editText.trimmingCharacters(in: .whitespaces)
+        workspace.customName = trimmed.isEmpty ? nil : trimmed
+        isEditing = false
+    }
+
+    private func cancelEdit() {
+        isEditing = false
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(workspace.displayName)
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
-                    .foregroundColor(isSelected ? .white.opacity(0.9) : .white.opacity(0.5))
+                if isEditing {
+                    TextField("Workspace name", text: $editText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                        .focused($isTextFieldFocused)
+                        .onSubmit { commitEdit() }
+                        .onExitCommand { cancelEdit() }
+                } else {
+                    Text(workspace.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .foregroundColor(isSelected ? .white.opacity(0.9) : .white.opacity(0.5))
+                }
 
                 Text(directoryLabel)
                     .font(.system(size: 10))
@@ -159,6 +183,20 @@ struct WorkspaceItemView: View {
                 .fill(isSelected ? Color.white.opacity(0.06) : isHovering ? Color.white.opacity(0.03) : Color.clear)
         )
         .onHover { isHovering = $0 }
+        .onTapGesture(count: 2) {
+            editText = workspace.customName ?? workspace.displayName
+            isEditing = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isTextFieldFocused = true
+            }
+        }
+        .onTapGesture(count: 1) {
+            if isEditing {
+                commitEdit()
+            } else {
+                onSelect()
+            }
+        }
     }
 }
 
