@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UserNotifications
 
 /// Callback context attached to each Ghostty surface. Passed through C callbacks
 /// as an opaque `void*` so we can route events back to the correct Swift objects.
@@ -268,16 +269,132 @@ final class GhosttyManager {
             return true
 
         case GHOSTTY_ACTION_RESIZE_SPLIT:
+            let resize = action.action.resize_split
+            if let surface = targetSurface(target),
+               let tabMgr = tabManagerForSurface(surface),
+               let ws = tabMgr.selectedWorkspace,
+               let layout = ws.splitLayout,
+               let selectedId = ws.selectedTabId,
+               let (parent, isFirst) = layout.findParent(of: selectedId),
+               let currentRatio = parent.ratio {
+                let delta = CGFloat(resize.amount) / 1000.0
+                let adjustment: CGFloat
+                switch resize.direction {
+                case GHOSTTY_RESIZE_SPLIT_LEFT, GHOSTTY_RESIZE_SPLIT_UP:
+                    adjustment = isFirst ? -delta : delta
+                case GHOSTTY_RESIZE_SPLIT_RIGHT, GHOSTTY_RESIZE_SPLIT_DOWN:
+                    adjustment = isFirst ? delta : -delta
+                default:
+                    return true
+                }
+                parent.setRatio(currentRatio + adjustment)
+                ws.objectWillChange.send()
+            }
             return true
 
         case GHOSTTY_ACTION_EQUALIZE_SPLITS:
+            if let surface = targetSurface(target),
+               let tabMgr = tabManagerForSurface(surface),
+               let ws = tabMgr.selectedWorkspace,
+               let layout = ws.splitLayout {
+                layout.equalizeAll()
+                ws.objectWillChange.send()
+            }
             return true
 
         case GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM:
+            if let surface = targetSurface(target),
+               let tabMgr = tabManagerForSurface(surface),
+               let ws = tabMgr.selectedWorkspace {
+                guard let layout = ws.splitLayout, layout.allTabIds.count > 1 else { return true }
+                ws.zoomedTabId = ws.zoomedTabId != nil ? nil : ws.selectedTabId
+            }
             return true
 
         case GHOSTTY_ACTION_RENDER:
             // No-op: Ghostty handles rendering via Metal
+            return true
+
+        case GHOSTTY_ACTION_OPEN_URL:
+            let openUrl = action.action.open_url
+            guard let urlPtr = openUrl.url else { return true }
+            let urlString = String(
+                bytes: Data(bytes: urlPtr, count: Int(openUrl.len)),
+                encoding: .utf8
+            ) ?? ""
+            guard !urlString.isEmpty else { return true }
+            if let url = URL(string: urlString), url.scheme != nil {
+                NSWorkspace.shared.open(url)
+            } else {
+                let expanded = NSString(string: urlString).standardizingPath
+                NSWorkspace.shared.open(URL(fileURLWithPath: expanded))
+            }
+            return true
+
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            let v = action.action.mouse_over_link
+            if v.len > 0, v.url != nil {
+                NSCursor.pointingHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+            return true
+
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            let n = action.action.desktop_notification
+            let title = n.title.flatMap { String(cString: $0) } ?? ""
+            let body = n.body.flatMap { String(cString: $0) } ?? ""
+            let center = UNUserNotificationCenter.current()
+            center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: nil
+            )
+            center.add(request)
+            return true
+
+        case GHOSTTY_ACTION_START_SEARCH:
+            if let surface = targetSurface(target),
+               let (_, tab) = tabAndManagerForSurface(surface) {
+                let needle = action.action.start_search.needle.flatMap { String(cString: $0) } ?? ""
+                DispatchQueue.main.async {
+                    tab.isSearching = true
+                    if !needle.isEmpty { tab.searchNeedle = needle }
+                }
+            }
+            return true
+
+        case GHOSTTY_ACTION_END_SEARCH:
+            if let surface = targetSurface(target),
+               let (_, tab) = tabAndManagerForSurface(surface) {
+                DispatchQueue.main.async {
+                    tab.isSearching = false
+                    tab.searchNeedle = ""
+                    tab.searchTotal = 0
+                    tab.searchSelected = 0
+                }
+            }
+            return true
+
+        case GHOSTTY_ACTION_SEARCH_TOTAL:
+            if let surface = targetSurface(target),
+               let (_, tab) = tabAndManagerForSurface(surface) {
+                let total = Int(action.action.search_total.total)
+                DispatchQueue.main.async { tab.searchTotal = max(0, total) }
+            }
+            return true
+
+        case GHOSTTY_ACTION_SEARCH_SELECTED:
+            if let surface = targetSurface(target),
+               let (_, tab) = tabAndManagerForSurface(surface) {
+                let selected = Int(action.action.search_selected.selected)
+                DispatchQueue.main.async { tab.searchSelected = max(0, selected) }
+            }
             return true
 
         default:

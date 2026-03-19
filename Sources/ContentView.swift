@@ -33,6 +33,9 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 TabBar(tabManager: tabManager)
+                if let tab = tabManager.selectedTab, tab.isSearching {
+                    SearchBarView(tab: tab)
+                }
                 TerminalContainerView(tabManager: tabManager)
                     .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
                         handleFileDrop(providers: providers)
@@ -76,6 +79,40 @@ private func shellEscapePath(_ path: String) -> String {
 }
 
 // MARK: - Workspace sidebar
+
+// MARK: - Search bar
+
+struct SearchBarView: View {
+    @ObservedObject var tab: Tab
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.4))
+
+            Text(tab.searchNeedle.isEmpty ? "Search" : tab.searchNeedle)
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.6))
+                .lineLimit(1)
+
+            Spacer()
+
+            if tab.searchTotal > 0 {
+                Text("\(tab.searchSelected)/\(tab.searchTotal)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+            } else if tab.isSearching {
+                Text("No results")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.3))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.06))
+    }
+}
 
 struct WorkspaceSidebar: View {
     @ObservedObject var tabManager: TabManager
@@ -576,6 +613,41 @@ struct TerminalContainerView: NSViewRepresentable {
             if layout.allTabIds.count <= 1 {
                 ws.splitLayout = nil
             }
+        }
+
+        // ZOOM MODE: show a single pane fullscreen while preserving the split tree
+        if let zoomedId = ws.zoomedTabId,
+           let layout = ws.splitLayout,
+           layout.allTabIds.contains(zoomedId),
+           let zoomedTab = tabLookup(zoomedId) {
+            for subview in container.subviews where subview is SplitContainerView {
+                subview.isHidden = true
+            }
+            let terminalView = zoomedTab.makeTerminalView(frame: container.bounds)
+            if terminalView.superview is SplitContainerView {
+                terminalView.removeFromSuperview()
+            }
+            if terminalView.superview !== container {
+                terminalView.removeFromSuperview()
+                terminalView.translatesAutoresizingMaskIntoConstraints = false
+                container.addSubview(terminalView)
+                NSLayoutConstraint.activate([
+                    terminalView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                    terminalView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                    terminalView.topAnchor.constraint(equalTo: container.topAnchor),
+                    terminalView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                ])
+            }
+            for subview in container.subviews where subview is TerminalView {
+                subview.isHidden = (subview !== terminalView)
+            }
+            terminalView.isHidden = false
+            if let surface = terminalView.surface {
+                ghostty_surface_refresh(surface)
+            }
+            terminalView.needsDisplay = true
+            DispatchQueue.main.async { zoomedTab.focus() }
+            return
         }
 
         if let layout = ws.splitLayout,

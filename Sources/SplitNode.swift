@@ -99,6 +99,34 @@ final class SplitNode: Identifiable, ObservableObject {
         }
     }
 
+    // MARK: - Split helpers
+
+    /// Current ratio if this is a split node.
+    var ratio: CGFloat? {
+        if case .split(_, _, _, let r) = content { return r }
+        return nil
+    }
+
+    /// Find the parent split node that directly contains the given tab ID as a child.
+    /// Returns the parent and whether the target is the `first` child.
+    func findParent(of targetId: UUID) -> (parent: SplitNode, isFirst: Bool)? {
+        guard case .split(_, let first, let second, _) = content else { return nil }
+
+        if case .tab(let id) = first.content, id == targetId { return (self, true) }
+        if case .tab(let id) = second.content, id == targetId { return (self, false) }
+
+        return first.findParent(of: targetId) ?? second.findParent(of: targetId)
+    }
+
+    /// Recursively set all split ratios to 0.5.
+    func equalizeAll() {
+        if case .split(let dir, let first, let second, _) = content {
+            content = .split(direction: dir, first: first, second: second, ratio: 0.5)
+            first.equalizeAll()
+            second.equalizeAll()
+        }
+    }
+
     // MARK: - Serialization
 
     final class Serialized: Codable {

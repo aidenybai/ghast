@@ -16,6 +16,12 @@ final class Tab: Identifiable, ObservableObject {
     /// Working directory to use when creating the terminal.
     var initialWorkingDirectory: String?
 
+    // Search state (driven by Ghostty actions, displayed by SearchBarView)
+    @Published var isSearching: Bool = false
+    @Published var searchNeedle: String = ""
+    @Published var searchTotal: Int = 0
+    @Published var searchSelected: Int = 0
+
     /// The terminal view is created lazily when the tab becomes visible.
     private(set) var terminalView: TerminalView?
 

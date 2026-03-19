@@ -14,6 +14,10 @@ final class Workspace: Identifiable, ObservableObject {
     /// When nil or a single leaf, the selected tab fills the whole area.
     @Published var splitLayout: SplitNode?
 
+    /// When set, the pane with this tab ID is shown fullscreen (zoomed),
+    /// hiding all other split panes. The split tree is preserved for unzoom.
+    @Published var zoomedTabId: UUID?
+
     var selectedTab: Tab? {
         guard let id = selectedTabId else { return tabs.first }
         return tabs.first { $0.id == id }
@@ -64,6 +68,7 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     func closeTab(_ id: UUID) -> Bool {
+        if zoomedTabId == id { zoomedTabId = nil }
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return false }
         tabs.remove(at: index)
 
@@ -74,6 +79,7 @@ final class Workspace: Identifiable, ObservableObject {
             if remaining.count <= 1 {
                 // Back to single pane
                 splitLayout = nil
+                zoomedTabId = nil
             }
         }
 
