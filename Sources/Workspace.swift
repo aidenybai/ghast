@@ -6,6 +6,7 @@ import Foundation
 final class Workspace: Identifiable, ObservableObject {
     let id: UUID
     @Published var directory: String
+    @Published var customName: String?
     @Published var tabs: [Tab] = []
     @Published var selectedTabId: UUID?
 
@@ -18,8 +19,11 @@ final class Workspace: Identifiable, ObservableObject {
         return tabs.first { $0.id == id }
     }
 
-    /// Display name: last path component of the directory.
+    /// Display name: custom name if set, otherwise last path component of the directory.
     var displayName: String {
+        if let custom = customName, !custom.isEmpty {
+            return custom
+        }
         let name = (directory as NSString).lastPathComponent
         return name.isEmpty ? "~" : name
     }
