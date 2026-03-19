@@ -1,3 +1,3 @@
 # Ghast
 
-This is a fork of [cmux](https://github.com/nichochar/cmux).
+This is a fork of [cmux](https://github.com/manaflow-ai/cmux).
