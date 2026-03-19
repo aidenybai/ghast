@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Main window content: sidebar + tab bar + terminal.
 struct ContentView: View {
@@ -33,10 +34,45 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 TabBar(tabManager: tabManager)
                 TerminalContainerView(tabManager: tabManager)
+                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+                        handleFileDrop(providers: providers)
+                    }
             }
         }
         .background(bgColor)
     }
+
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        guard let tab = tabManager.selectedTab,
+              let surface = tab.terminalView?.surface else { return false }
+
+        for provider in providers {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                guard let data = item as? Data,
+                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                let path = shellEscapePath(url.path)
+                DispatchQueue.main.async {
+                    path.withCString { ptr in
+                        ghostty_surface_text(surface, ptr, UInt(path.utf8.count))
+                    }
+                    // Add a space after each path when multiple files are dropped
+                    if providers.count > 1 {
+                        " ".withCString { ptr in
+                            ghostty_surface_text(surface, ptr, 1)
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+}
+
+private func shellEscapePath(_ path: String) -> String {
+    let needsEscape = path.contains(where: { " \t\\\"'`$!#&|;()<>{}[]?*~".contains($0) })
+    guard needsEscape else { return path }
+    let inner = path.replacingOccurrences(of: "'", with: "'\\''")
+    return "'\(inner)'"
 }
 
 // MARK: - Workspace sidebar
