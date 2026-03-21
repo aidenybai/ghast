@@ -43,8 +43,6 @@ struct ContentView: View {
 
 }
 
-// MARK: - Workspace sidebar
-
 // MARK: - Search bar
 
 struct SearchBarView: View {
