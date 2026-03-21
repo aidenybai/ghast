@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // App termination is gated by applicationShouldTerminate (quit confirmation dialog).
         true
     }
 
@@ -196,8 +197,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - NSWindowDelegate
 
 extension AppDelegate: NSWindowDelegate {
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard let mgr = tabManagers.first(where: { $0.window === sender }),
+              !mgr.tabs.isEmpty else { return true }
+
+        let alert = NSAlert()
+        alert.messageText = "Close Window?"
+        alert.informativeText = "All terminal sessions in this window will be terminated."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+
+        alert.beginSheetModal(for: sender) { response in
+            if response == .alertFirstButtonReturn {
+                // User confirmed — allow the close
+                self.tabManagers.removeAll { $0.window === sender }
+                sender.close()
+            }
+        }
+        return false
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         tabManagers.removeAll { $0.window === window }
+    }
+}
+
+// MARK: - App termination confirmation
+
+extension AppDelegate {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let activeSessions = tabManagers.reduce(0) { $0 + $1.tabs.count }
+        guard activeSessions > 0 else { return .terminateNow }
+
+        guard let window = NSApp.keyWindow ?? tabManagers.first?.window else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = "Quit ghast?"
+        alert.informativeText = activeSessions == 1
+            ? "1 terminal session will be terminated."
+            : "\(activeSessions) terminal sessions will be terminated."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+
+        alert.beginSheetModal(for: window) { response in
+            NSApp.reply(toApplicationShouldTerminate: response == .alertFirstButtonReturn)
+        }
+        return .terminateLater
     }
 }

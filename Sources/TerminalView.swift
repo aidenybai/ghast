@@ -146,25 +146,25 @@ class TerminalView: NSView, NSTextInputClient {
     override func keyDown(with event: NSEvent) {
         guard let surface else { super.keyDown(with: event); return }
 
-        // Ensure focus
         ghostty_surface_set_focus(surface, true)
 
-        // Accumulate text from interpretKeyEvents
+        let fnKey = Self.isFunctionKey(event)
+
+        // Only run interpretKeyEvents for text-producing keys, or when the IME
+        // has an active composition (marked text) that needs arrow-key navigation.
+        // Function/arrow keys must NOT go through IME — otherwise an active input
+        // method (e.g. Japanese) injects composed text instead of cursor movement.
         keyTextAccumulator = []
-        interpretKeyEvents([event])
+        if !fnKey || hasMarkedText() {
+            interpretKeyEvents([event])
+        }
 
-        var keyEvent = ghostty_input_key_s()
-        keyEvent.action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
-        keyEvent.keycode = UInt32(event.keyCode)
-        keyEvent.mods = modsFromEvent(event)
-        keyEvent.consumed_mods = GHOSTTY_MODS_NONE
+        var keyEvent = makeKeyEvent(event, action: event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS)
         keyEvent.composing = hasMarkedText()
-        keyEvent.unshifted_codepoint = unshiftedCodepoint(for: event)
 
-        // Use text from IME/interpretKeyEvents if available, otherwise from event
-        let text = keyTextAccumulator?.first ?? event.characters ?? ""
+        // Don't send text for function/arrow keys — ghostty handles them by keycode.
+        let text = fnKey ? "" : (keyTextAccumulator?.first ?? event.characters ?? "")
         if text.isEmpty {
-            keyEvent.text = nil
             _ = ghostty_surface_key(surface, keyEvent)
         } else {
             text.withCString { ptr in
@@ -177,25 +177,13 @@ class TerminalView: NSView, NSTextInputClient {
 
     override func keyUp(with event: NSEvent) {
         guard let surface else { super.keyUp(with: event); return }
-        var keyEvent = ghostty_input_key_s()
-        keyEvent.action = GHOSTTY_ACTION_RELEASE
-        keyEvent.keycode = UInt32(event.keyCode)
-        keyEvent.mods = modsFromEvent(event)
-        keyEvent.consumed_mods = GHOSTTY_MODS_NONE
-        keyEvent.text = nil
-        keyEvent.composing = false
+        let keyEvent = makeKeyEvent(event, action: GHOSTTY_ACTION_RELEASE)
         _ = ghostty_surface_key(surface, keyEvent)
     }
 
     override func flagsChanged(with event: NSEvent) {
         guard let surface else { super.flagsChanged(with: event); return }
-        var keyEvent = ghostty_input_key_s()
-        keyEvent.action = GHOSTTY_ACTION_PRESS
-        keyEvent.keycode = UInt32(event.keyCode)
-        keyEvent.mods = modsFromEvent(event)
-        keyEvent.consumed_mods = GHOSTTY_MODS_NONE
-        keyEvent.text = nil
-        keyEvent.composing = false
+        let keyEvent = makeKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         _ = ghostty_surface_key(surface, keyEvent)
     }
 
@@ -209,36 +197,35 @@ class TerminalView: NSView, NSTextInputClient {
         // in libghostty's clipboard paste flow.
         if event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers == "v" {
-            let value = NSPasteboard.general.string(forType: .string) ?? ""
-            guard !value.isEmpty else { return true }
-            value.withCString { ptr in
-                ghostty_surface_text(surface, ptr, UInt(value.utf8.count))
-            }
+            pasteFromClipboard()
             return true
         }
 
         // Check if Ghostty has a binding for this key
-        var keyEvent = ghostty_input_key_s()
-        keyEvent.action = GHOSTTY_ACTION_PRESS
-        keyEvent.keycode = UInt32(event.keyCode)
-        keyEvent.mods = modsFromEvent(event)
-        keyEvent.consumed_mods = GHOSTTY_MODS_NONE
-        keyEvent.composing = false
-        keyEvent.unshifted_codepoint = unshiftedCodepoint(for: event)
+        var keyEvent = makeKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
 
-        let text = event.characters ?? ""
+        // Filter function key text (same issue as keyDown — private-use Unicode garbage).
+        let text = Self.isFunctionKey(event) ? "" : (event.characters ?? "")
         var flags = ghostty_binding_flags_e(0)
-        let isBinding = text.withCString { ptr in
-            keyEvent.text = ptr
-            return ghostty_surface_key_is_binding(surface, keyEvent, &flags)
+        let isBinding: Bool
+        if text.isEmpty {
+            isBinding = ghostty_surface_key_is_binding(surface, keyEvent, &flags)
+        } else {
+            isBinding = text.withCString { ptr in
+                keyEvent.text = ptr
+                return ghostty_surface_key_is_binding(surface, keyEvent, &flags)
+            }
         }
 
         guard isBinding else { return false }
 
-        // Send the key to Ghostty
-        text.withCString { ptr in
-            keyEvent.text = ptr
+        if text.isEmpty {
             _ = ghostty_surface_key(surface, keyEvent)
+        } else {
+            text.withCString { ptr in
+                keyEvent.text = ptr
+                _ = ghostty_surface_key(surface, keyEvent)
+            }
         }
         return true
     }
@@ -248,12 +235,7 @@ class TerminalView: NSView, NSTextInputClient {
 
     // Fallback paste handler for when the Edit menu's Cmd+V isn't caught by performKeyEquivalent
     @objc func paste(_ sender: Any?) {
-        guard let surface else { return }
-        let value = NSPasteboard.general.string(forType: .string) ?? ""
-        guard !value.isEmpty else { return }
-        value.withCString { ptr in
-            ghostty_surface_text(surface, ptr, UInt(value.utf8.count))
-        }
+        pasteFromClipboard()
     }
 
     // MARK: - File drag & drop
@@ -414,6 +396,36 @@ class TerminalView: NSView, NSTextInputClient {
 
     // MARK: - Helpers
 
+    /// Whether the event produces a macOS function/arrow key (Unicode private use area U+F700–F8FF).
+    private static func isFunctionKey(_ event: NSEvent) -> Bool {
+        guard let chars = event.charactersIgnoringModifiers,
+              let scalar = chars.unicodeScalars.first else { return false }
+        return scalar.value >= 0xF700 && scalar.value <= 0xF8FF
+    }
+
+    /// Build a base `ghostty_input_key_s` from an NSEvent, without text or composing state.
+    private func makeKeyEvent(_ event: NSEvent, action: ghostty_input_action_e) -> ghostty_input_key_s {
+        var keyEvent = ghostty_input_key_s()
+        keyEvent.action = action
+        keyEvent.keycode = UInt32(event.keyCode)
+        keyEvent.mods = modsFromEvent(event)
+        keyEvent.consumed_mods = GHOSTTY_MODS_NONE
+        keyEvent.composing = false
+        keyEvent.text = nil
+        keyEvent.unshifted_codepoint = unshiftedCodepoint(for: event)
+        return keyEvent
+    }
+
+    /// Paste clipboard contents into the terminal surface.
+    private func pasteFromClipboard() {
+        guard let surface else { return }
+        let value = NSPasteboard.general.string(forType: .string) ?? ""
+        guard !value.isEmpty else { return }
+        value.withCString { ptr in
+            ghostty_surface_text(surface, ptr, UInt(value.utf8.count))
+        }
+    }
+
     private func modsFromEvent(_ event: NSEvent) -> ghostty_input_mods_e {
         var mods = GHOSTTY_MODS_NONE.rawValue
         if event.modifierFlags.contains(.shift) { mods |= GHOSTTY_MODS_SHIFT.rawValue }
@@ -427,7 +439,7 @@ class TerminalView: NSView, NSTextInputClient {
         guard let chars = event.charactersIgnoringModifiers ?? event.characters,
               let scalar = chars.unicodeScalars.first,
               scalar.value >= 0x20,
-              !(scalar.value >= 0xF700 && scalar.value <= 0xF8FF) else { return 0 }
+              !Self.isFunctionKey(event) else { return 0 }
         return scalar.value
     }
 }

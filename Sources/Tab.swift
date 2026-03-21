@@ -10,9 +10,6 @@ final class Tab: Identifiable, ObservableObject {
     /// The current working directory as reported by the shell.
     var currentDirectory: String?
 
-    /// Whether this tab has received its first directory report.
-    var hasReceivedInitialDirectory: Bool = false
-
     /// Working directory to use when creating the terminal.
     var initialWorkingDirectory: String?
 
