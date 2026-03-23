@@ -10,10 +10,11 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if tabManager.isSidebarVisible {
-                WorkspaceSidebar(tabManager: tabManager)
-                    .frame(width: sidebarWidth)
+            WorkspaceSidebar(tabManager: tabManager)
+                .frame(width: tabManager.isSidebarVisible ? sidebarWidth : 0)
+                .clipped()
 
+            if tabManager.isSidebarVisible {
                 Rectangle()
                     .fill(Color.white.opacity(0.06))
                     .frame(width: 1)
@@ -28,6 +29,7 @@ struct ContentView: View {
                                 sidebarWidth = min(max(sidebarWidth + value.translation.width, 120), 400)
                             }
                     )
+                    .transition(.opacity)
             }
 
             VStack(spacing: 0) {
@@ -79,47 +81,96 @@ struct SearchBarView: View {
 
 struct WorkspaceSidebar: View {
     @ObservedObject var tabManager: TabManager
+    @State private var draggedId: UUID?
+    @State private var dragOffset: CGFloat = 0
+    /// The index the dragged item started at.
+    @State private var dragSourceIndex: Int = 0
 
     private var bgColor: Color { Color(nsColor: GhosttyManager.shared.backgroundColor) }
+
+    private let itemHeight: CGFloat = 52
+
+    /// Where the dragged item currently wants to be, as an index.
+    private var dragTargetIndex: Int {
+        guard draggedId != nil else { return dragSourceIndex }
+        let slots = Int(round(dragOffset / itemHeight))
+        return min(max(dragSourceIndex + slots, 0), tabManager.workspaces.count - 1)
+    }
+
+    /// Calculate the vertical shift for a non-dragged item to make room.
+    private func shiftForItem(at index: Int) -> CGFloat {
+        guard draggedId != nil else { return 0 }
+        let target = dragTargetIndex
+        if index == dragSourceIndex { return 0 } // dragged item uses dragOffset directly
+        // Items between source and target need to shift
+        if dragSourceIndex < target {
+            // Dragging down: items between source+1..target shift up
+            if index > dragSourceIndex && index <= target { return -itemHeight }
+        } else if dragSourceIndex > target {
+            // Dragging up: items between target..source-1 shift down
+            if index >= target && index < dragSourceIndex { return itemHeight }
+        }
+        return 0
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer().frame(height: 8)
 
             // + Workspace at top
-            Button(action: {
+            NewWorkspaceButton {
                 let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
                 let ws = tabManager.createWorkspace(directory: homeDir)
                 ws.createTab()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .medium))
-                    Text("Workspace")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundColor(.white.opacity(0.3))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.clear)
-                )
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .disabled(draggedId != nil)
             .padding(.horizontal, 8)
-            .padding(.bottom, 2)
+            .padding(.bottom, 6)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 4) {
-                    ForEach(tabManager.workspaces) { workspace in
+                    ForEach(Array(tabManager.workspaces.enumerated()), id: \.element.id) { index, workspace in
+                        let isDragged = draggedId == workspace.id
                         WorkspaceItemView(
                             workspace: workspace,
                             isSelected: workspace.id == tabManager.selectedWorkspaceId,
-                            onSelect: { tabManager.selectWorkspace(workspace.id) },
+                            onSelect: { if draggedId == nil { tabManager.selectWorkspace(workspace.id) } },
                             onClose: { tabManager.closeWorkspace(workspace.id) }
+                        )
+                        .zIndex(isDragged ? 1 : 0)
+                        .scaleEffect(isDragged ? 1.02 : 1.0)
+                        .shadow(color: .black.opacity(isDragged ? 0.3 : 0), radius: isDragged ? 6 : 0, y: 2)
+                        .offset(y: isDragged ? dragOffset : shiftForItem(at: index))
+                        .animation(.easeInOut(duration: 0.2), value: dragTargetIndex)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    if draggedId == nil {
+                                        draggedId = workspace.id
+                                        dragSourceIndex = index
+                                    }
+                                    // Clamp so item stays within list bounds
+                                    let maxUp = -CGFloat(dragSourceIndex) * itemHeight
+                                    let maxDown = CGFloat(tabManager.workspaces.count - 1 - dragSourceIndex) * itemHeight
+                                    dragOffset = min(max(value.translation.height, maxUp), maxDown)
+                                }
+                                .onEnded { _ in
+                                    let target = dragTargetIndex
+                                    if target != dragSourceIndex {
+                                        tabManager.workspaces.move(
+                                            fromOffsets: IndexSet(integer: dragSourceIndex),
+                                            toOffset: target > dragSourceIndex ? target + 1 : target
+                                        )
+                                    }
+                                    dragOffset = 0
+                                    draggedId = nil
+                                }
                         )
                     }
                 }
@@ -132,6 +183,32 @@ struct WorkspaceSidebar: View {
     }
 }
 
+struct NewWorkspaceButton: View {
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .medium))
+                Text("Workspace")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundColor(.white.opacity(isHovering ? 0.6 : 0.3))
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(isHovering ? 0.04 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
 struct WorkspaceItemView: View {
     @ObservedObject var workspace: Workspace
     let isSelected: Bool
@@ -141,6 +218,7 @@ struct WorkspaceItemView: View {
     @State private var isEditing = false
     @State private var editText = ""
     @FocusState private var isTextFieldFocused: Bool
+    @State private var isPulsing = false
 
     /// The selected tab's title, used for the subtitle line.
     private var activeTabTitle: String {
@@ -170,6 +248,20 @@ struct WorkspaceItemView: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // Active command indicator — pulsing dot
+            if workspace.hasRunningCommand {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                    .opacity(isPulsing ? 0.8 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                        value: isPulsing
+                    )
+                    .onAppear { isPulsing = true }
+                    .onDisappear { isPulsing = false }
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 if isEditing {
                     TextField("Workspace name", text: $editText)
@@ -204,10 +296,15 @@ struct WorkspaceItemView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-            } else {
+            } else if workspace.tabs.count > 1 {
                 Text("\(workspace.tabs.count)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.2))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(Color.white.opacity(0.08))
+                    )
             }
         }
         .padding(.horizontal, 10)
@@ -255,7 +352,7 @@ struct TabBar: View {
             HStack(spacing: 0) {
                 // Sidebar toggle
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.1)) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         tabManager.isSidebarVisible.toggle()
                     }
                 }) {

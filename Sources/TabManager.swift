@@ -89,6 +89,13 @@ final class TabManager: ObservableObject {
         selectedWorkspaceId = id
     }
 
+    func moveWorkspace(from sourceId: UUID, to targetId: UUID) {
+        guard let fromIndex = workspaces.firstIndex(where: { $0.id == sourceId }),
+              let toIndex = workspaces.firstIndex(where: { $0.id == targetId }),
+              fromIndex != toIndex else { return }
+        workspaces.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+    }
+
     func closeWorkspace(_ id: UUID) {
         // Clean up terminal views before removing
         if let ws = workspaces.first(where: { $0.id == id }) {

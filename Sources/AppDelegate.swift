@@ -108,6 +108,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             windowMenu.items.last?.tag = i
         }
         windowMenu.addItem(.separator())
+        let nextWs = NSMenuItem(title: "Next Workspace", action: #selector(nextWorkspace(_:)), keyEquivalent: String(Character(UnicodeScalar(NSDownArrowFunctionKey)!)))
+        nextWs.keyEquivalentModifierMask = [.command, .shift]
+        windowMenu.addItem(nextWs)
+        let prevWs = NSMenuItem(title: "Previous Workspace", action: #selector(previousWorkspace(_:)), keyEquivalent: String(Character(UnicodeScalar(NSUpArrowFunctionKey)!)))
+        prevWs.keyEquivalentModifierMask = [.command, .shift]
+        windowMenu.addItem(prevWs)
+        windowMenu.addItem(.separator())
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
         let windowMenuItem = NSMenuItem()
         windowMenuItem.submenu = windowMenu
@@ -146,6 +153,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func previousTab(_ sender: Any?) {
         focusedTabManager?.selectPreviousTab()
+    }
+
+    @objc private func nextWorkspace(_ sender: Any?) {
+        guard let mgr = focusedTabManager else { return }
+        let workspaces = mgr.workspaces
+        guard workspaces.count > 1,
+              let currentId = mgr.selectedWorkspaceId,
+              let index = workspaces.firstIndex(where: { $0.id == currentId }) else { return }
+        let next = (index + 1) % workspaces.count
+        mgr.selectWorkspace(workspaces[next].id)
+    }
+
+    @objc private func previousWorkspace(_ sender: Any?) {
+        guard let mgr = focusedTabManager else { return }
+        let workspaces = mgr.workspaces
+        guard workspaces.count > 1,
+              let currentId = mgr.selectedWorkspaceId,
+              let index = workspaces.firstIndex(where: { $0.id == currentId }) else { return }
+        let prev = (index - 1 + workspaces.count) % workspaces.count
+        mgr.selectWorkspace(workspaces[prev].id)
     }
 
     @objc private func splitRight(_ sender: Any?) {

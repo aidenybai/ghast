@@ -35,6 +35,11 @@ final class Workspace: Identifiable, ObservableObject {
         return name.isEmpty ? "~" : name
     }
 
+    /// Whether any tab in this workspace is currently running a command.
+    var hasRunningCommand: Bool {
+        tabs.contains { $0.isRunningCommand }
+    }
+
     init(directory: String) {
         self.id = UUID()
         self.directory = directory
