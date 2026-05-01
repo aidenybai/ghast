@@ -427,7 +427,7 @@ struct TabListView: View {
                     draggedTabId = tab.id
                     return NSItemProvider(object: tab.id.uuidString as NSString)
                 } preview: {
-                    Text(tab.title.isEmpty ? "Terminal" : tab.title)
+                    Text(tab.displayName.isEmpty ? "Terminal" : tab.displayName)
                         .font(.system(size: 11))
                         .foregroundColor(.white)
                         .padding(.horizontal, 8)
@@ -490,6 +490,7 @@ struct TabItemView: View {
                     .focused($isTextFieldFocused)
                     .onSubmit { commitEdit() }
                     .onExitCommand { isEditing = false }
+                    .onTapGesture(count: 1) { commitEdit() }
             } else {
                 Text(tab.displayName.isEmpty ? "Terminal" : tab.displayName)
                     .font(.system(size: 12))
