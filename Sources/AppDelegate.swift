@@ -129,7 +129,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        // Navigate menu
+        let navigateMenu = NSMenu(title: "Navigate")
+        let quickSwitcherItem = NSMenuItem(
+            title: "Quick Switcher",
+            action: #selector(toggleQuickSwitcher(_:)),
+            keyEquivalent: "K"
+        )
+        quickSwitcherItem.keyEquivalentModifierMask = [.command, .shift]
+        navigateMenu.addItem(quickSwitcherItem)
+        let navigateMenuItem = NSMenuItem()
+        navigateMenuItem.submenu = navigateMenu
+        mainMenu.addItem(navigateMenuItem)
+
         return mainMenu
+    }
+
+    @objc private func toggleQuickSwitcher(_ sender: Any?) {
+        NotificationCenter.default.post(name: .toggleQuickSwitcher, object: nil)
     }
 
     // MARK: - Menu actions

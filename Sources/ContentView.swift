@@ -1,10 +1,13 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Main window content: sidebar + tab bar + terminal.
 struct ContentView: View {
     @ObservedObject var tabManager: TabManager
     @State private var sidebarWidth: CGFloat = 180
+    @State private var isQuickSwitcherVisible: Bool = false
+    @State private var quickSwitcherToken: AnyCancellable? = nil
 
     private var bgColor: Color { Color(nsColor: GhosttyManager.shared.backgroundColor) }
 
@@ -41,6 +44,14 @@ struct ContentView: View {
             }
         }
         .background(bgColor)
+        .overlay {
+            if isQuickSwitcherVisible {
+                QuickSwitcherView(tabManager: tabManager, isVisible: $isQuickSwitcherVisible)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleQuickSwitcher)) { _ in
+            isQuickSwitcherVisible.toggle()
+        }
     }
 
 }
@@ -490,7 +501,6 @@ struct TabItemView: View {
                     .focused($isTextFieldFocused)
                     .onSubmit { commitEdit() }
                     .onExitCommand { isEditing = false }
-                    .onTapGesture(count: 1) { commitEdit() }
             } else {
                 Text(tab.displayName.isEmpty ? "Terminal" : tab.displayName)
                     .font(.system(size: 12))

@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let toggleQuickSwitcher = Notification.Name("toggleQuickSwitcher")
+}
+
 @main
 struct GhastApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
