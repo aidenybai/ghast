@@ -426,6 +426,7 @@ class TerminalView: NSView, NSTextInputClient {
     }
 
     private func unshiftedCodepoint(for event: NSEvent) -> UInt32 {
+        guard event.type != .flagsChanged else { return 0 }
         guard let chars = event.charactersIgnoringModifiers ?? event.characters,
               let scalar = chars.unicodeScalars.first,
               scalar.value >= 0x20,
