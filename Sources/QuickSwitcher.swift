@@ -113,7 +113,7 @@ struct QuickSwitcherView: View {
             .onChange(of: query) { _ in selectedIndex = 0 }
         }
         .onKeyPress(.escape) { isVisible = false; return .handled }
-        .onKeyPress(.downArrow) { selectedIndex = min(selectedIndex + 1, items.count - 1); return .handled }
+        .onKeyPress(.downArrow) { if !items.isEmpty { selectedIndex = min(selectedIndex + 1, items.count - 1) }; return .handled }
         .onKeyPress(.upArrow) { selectedIndex = max(selectedIndex - 1, 0); return .handled }
     }
 }

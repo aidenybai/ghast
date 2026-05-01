@@ -7,7 +7,6 @@ struct ContentView: View {
     @ObservedObject var tabManager: TabManager
     @State private var sidebarWidth: CGFloat = 180
     @State private var isQuickSwitcherVisible: Bool = false
-    @State private var quickSwitcherToken: AnyCancellable? = nil
 
     private var bgColor: Color { Color(nsColor: GhosttyManager.shared.backgroundColor) }
 
