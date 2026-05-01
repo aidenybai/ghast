@@ -6,6 +6,7 @@ import Foundation
 final class Tab: Identifiable, ObservableObject {
     let id: UUID
     @Published var title: String
+    @Published var customName: String?
 
     /// The current working directory as reported by the shell.
     var currentDirectory: String?
@@ -46,6 +47,8 @@ final class Tab: Identifiable, ObservableObject {
         let baseName = (shellPart as NSString).lastPathComponent.lowercased()
         return !Self.shellNames.contains(baseName)
     }
+
+    var displayName: String { customName ?? title }
 
     init(id: UUID = UUID(), title: String = "Terminal", workingDirectory: String? = nil) {
         self.id = id

@@ -364,6 +364,7 @@ struct TabBar: View {
                 }
                 .buttonStyle(.plain)
                 .background(bgColor)
+                .keyboardShortcut(".", modifiers: .command)
 
                 Spacer()
 
@@ -458,6 +459,15 @@ struct TabItemView: View {
     let isOnly: Bool
     let onClose: () -> Void
     @State private var isHovering = false
+    @State private var isEditing = false
+    @State private var editText = ""
+    @FocusState private var isTextFieldFocused: Bool
+
+    private func commitEdit() {
+        let trimmed = editText.trimmingCharacters(in: .whitespaces)
+        tab.customName = trimmed.isEmpty ? nil : trimmed
+        isEditing = false
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -472,11 +482,28 @@ struct TabItemView: View {
                 .buttonStyle(.plain)
             }
 
-            Text(tab.title.isEmpty ? "Terminal" : tab.title)
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundColor(isSelected ? .white.opacity(0.9) : .white.opacity(0.4))
+            if isEditing {
+                TextField("Tab name", text: $editText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.9))
+                    .focused($isTextFieldFocused)
+                    .onSubmit { commitEdit() }
+                    .onExitCommand { isEditing = false }
+            } else {
+                Text(tab.displayName.isEmpty ? "Terminal" : tab.displayName)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundColor(isSelected ? .white.opacity(0.9) : .white.opacity(0.4))
+                    .onTapGesture(count: 2) {
+                        editText = tab.customName ?? tab.title
+                        isEditing = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isTextFieldFocused = true
+                        }
+                    }
+            }
 
             if index < 9 {
                 Text("\u{2318}\(index + 1)")
