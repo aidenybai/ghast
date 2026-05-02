@@ -336,18 +336,18 @@ struct WorkspaceItemView: View {
                 .fill(isSelected ? Color.white.opacity(0.06) : isHovering ? Color.white.opacity(0.03) : Color.clear)
         )
         .onHover { isHovering = $0 }
-        .onTapGesture(count: 1) {
-            if isEditing {
-                commitEdit()
-            } else {
-                onSelect()
-            }
-        }
         .onTapGesture(count: 2) {
             editText = workspace.customName ?? workspace.displayName
             isEditing = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isTextFieldFocused = true
+            }
+        }
+        .onTapGesture(count: 1) {
+            if isEditing {
+                commitEdit()
+            } else {
+                onSelect()
             }
         }
     }

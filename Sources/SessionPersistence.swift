@@ -46,7 +46,7 @@ struct SessionPersistence {
                         TabSnapshot(
                             id: tab.id,
                             customName: tab.customName,
-                            workingDirectory: tab.currentDirectory,
+                            workingDirectory: tab.currentDirectory ?? tab.initialWorkingDirectory,
                             tmuxSessionName: tab.tmuxSessionName
                         )
                     },
