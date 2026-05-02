@@ -18,6 +18,9 @@ final class TabManager: ObservableObject {
     private var tabSubs: [UUID: AnyCancellable] = [:]
     private var tabListSubs: Set<AnyCancellable> = []
 
+    private let tabSaveSubject = PassthroughSubject<Void, Never>()
+    private var tabSaveCancellable: AnyCancellable?
+
     var selectedWorkspace: Workspace? {
         guard let id = selectedWorkspaceId else { return workspaces.first }
         return workspaces.first { $0.id == id }
@@ -38,6 +41,12 @@ final class TabManager: ObservableObject {
     }
 
     init() {
+        tabSaveCancellable = tabSaveSubject
+            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main)
+            .sink { [weak self] in
+                if let self { SessionPersistence.save(tabManager: self) }
+            }
+
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
         let workspace = addWorkspace(directory: homeDir)
         workspace.createTab()
@@ -92,11 +101,9 @@ final class TabManager: ObservableObject {
     }
 
     private func observeTab(_ tab: Tab) {
-        guard tabSubs[tab.id] == nil else { return }
+        tabSubs[tab.id]?.cancel()
         tabSubs[tab.id] = tab.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                if let self { SessionPersistence.save(tabManager: self) }
-            }
+            self?.tabSaveSubject.send()
         }
     }
 
