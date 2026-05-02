@@ -98,7 +98,7 @@ final class TabManager: ObservableObject {
                 let tab = Tab(
                     id: tabSnap.id,
                     workingDirectory: tabSnap.workingDirectory,
-                    tmuxSessionName: nil
+                    tmuxSessionName: tabSnap.tmuxSessionName
                 )
                 tab.customName = tabSnap.customName
                 ws.tabs.append(tab)

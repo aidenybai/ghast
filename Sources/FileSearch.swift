@@ -66,9 +66,9 @@ class FileSearchEngine: ObservableObject {
                 var parsed: [FileSearchResult] = []
                 do {
                     try process.run()
-                    process.waitUntilExit()
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
                     let output = String(data: data, encoding: .utf8) ?? ""
                     let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
                     
