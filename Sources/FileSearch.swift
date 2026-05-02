@@ -54,7 +54,7 @@ class FileSearchEngine: ObservableObject {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: rgPath)
                 process.arguments = [
-                    "--line-number", "--no-heading", "--color=never",
+                    "--json",
                     "--smart-case", "--max-count=5", "--max-filesize=1M",
                     "--glob=!.git", "--glob=!node_modules", "--glob=!*.lock",
                     "--", query, directory
@@ -67,20 +67,26 @@ class FileSearchEngine: ObservableObject {
                 do {
                     try process.run()
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    let _ = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     let output = String(data: data, encoding: .utf8) ?? ""
+                    let base = directory.hasSuffix("/") ? String(directory.dropLast()) : directory
 
                     for line in output.components(separatedBy: "\n").prefix(200) {
-                        guard !line.isEmpty else { continue }
-                        let parts = line.components(separatedBy: ":")
-                        guard parts.count >= 3, let lineNum = Int(parts[1]) else { continue }
-                        let filePath = parts[0]
-                        let lineText = parts[2...].joined(separator: ":").trimmingCharacters(in: .whitespaces)
+                        guard !line.isEmpty,
+                              let lineData = line.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                              (json["type"] as? String) == "match",
+                              let dataObj = json["data"] as? [String: Any],
+                              let pathObj = dataObj["path"] as? [String: Any],
+                              let filePath = pathObj["text"] as? String,
+                              let lineNum = (dataObj["line_number"] as? Int),
+                              let linesObj = dataObj["lines"] as? [String: Any],
+                              let lineText = linesObj["text"] as? String
+                        else { continue }
                         let fileName = URL(fileURLWithPath: filePath).lastPathComponent
-                        let base = directory.hasSuffix("/") ? String(directory.dropLast()) : directory
                         let relPath = filePath.hasPrefix(base) ? String(filePath.dropFirst(base.count + 1)) : filePath
-                        parsed.append(FileSearchResult(filePath: relPath, absolutePath: filePath, fileName: fileName, lineNumber: lineNum, lineText: lineText))
+                        parsed.append(FileSearchResult(filePath: relPath, absolutePath: filePath, fileName: fileName, lineNumber: lineNum, lineText: lineText.trimmingCharacters(in: .whitespacesAndNewlines)))
                     }
                 } catch {}
                 continuation.resume(returning: parsed)

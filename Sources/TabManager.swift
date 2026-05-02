@@ -86,7 +86,12 @@ final class TabManager: ObservableObject {
         guard let snapshot = SessionPersistence.load(),
               !snapshot.workspaces.isEmpty else { return }
 
-        // Clear default workspace created in init
+        // Clean up terminal views before clearing workspaces
+        for ws in workspaces {
+            for tab in ws.tabs {
+                tab.terminalView?.removeFromSuperview()
+            }
+        }
         workspaces.removeAll()
         workspaceSubs.removeAll()
 
