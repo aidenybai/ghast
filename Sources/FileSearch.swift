@@ -3,7 +3,8 @@ import AppKit
 
 struct FileSearchResult: Identifiable {
     let id = UUID()
-    let filePath: String
+    let filePath: String       // relative path for display
+    let absolutePath: String   // full path for opening
     let fileName: String
     let lineNumber: Int
     let lineText: String
@@ -50,14 +51,13 @@ class FileSearchEngine: ObservableObject {
                     continuation.resume(returning: [])
                     return
                 }
-                print("[FileSearch] Searching for '\(query)' in '\(directory)'")
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: rgPath)
                 process.arguments = [
                     "--line-number", "--no-heading", "--color=never",
                     "--smart-case", "--max-count=5", "--max-filesize=1M",
                     "--glob=!.git", "--glob=!node_modules", "--glob=!*.lock",
-                    query, directory
+                    "--", query, directory
                 ]
                 let pipe = Pipe()
                 let errorPipe = Pipe()
@@ -70,13 +70,7 @@ class FileSearchEngine: ObservableObject {
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     let output = String(data: data, encoding: .utf8) ?? ""
-                    let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-                    
-                    if !errorOutput.isEmpty {
-                        print("[FileSearch] ripgrep error: \(errorOutput)")
-                    }
-                    print("[FileSearch] Found \(output.components(separatedBy: "\n").filter { !$0.isEmpty }.count) lines")
-                    
+
                     for line in output.components(separatedBy: "\n").prefix(200) {
                         guard !line.isEmpty else { continue }
                         let parts = line.components(separatedBy: ":")
@@ -84,12 +78,11 @@ class FileSearchEngine: ObservableObject {
                         let filePath = parts[0]
                         let lineText = parts[2...].joined(separator: ":").trimmingCharacters(in: .whitespaces)
                         let fileName = URL(fileURLWithPath: filePath).lastPathComponent
-                        let relPath = filePath.hasPrefix(directory) ? String(filePath.dropFirst(directory.count + 1)) : filePath
-                        parsed.append(FileSearchResult(filePath: relPath, fileName: fileName, lineNumber: lineNum, lineText: lineText))
+                        let base = directory.hasSuffix("/") ? String(directory.dropLast()) : directory
+                        let relPath = filePath.hasPrefix(base) ? String(filePath.dropFirst(base.count + 1)) : filePath
+                        parsed.append(FileSearchResult(filePath: relPath, absolutePath: filePath, fileName: fileName, lineNumber: lineNum, lineText: lineText))
                     }
-                } catch {
-                    print("[FileSearch] Failed to run ripgrep: \(error)")
-                }
+                } catch {}
                 continuation.resume(returning: parsed)
             }
         }
@@ -106,20 +99,14 @@ struct FileSearchView: View {
     @FocusState private var isSearchFocused: Bool
 
     private var currentDirectory: String {
-        // Use the selected tab's current directory (tracked via PWD action from shell)
         if let tab = tabManager.selectedTab, let cwd = tab.currentDirectory {
-            print("[FileSearch] Using tab currentDirectory: \(cwd)")
             return cwd
         }
-        // Fallback to workspace directory
-        let fallback = tabManager.selectedWorkspace?.directory ?? FileManager.default.homeDirectoryForCurrentUser.path
-        print("[FileSearch] Using fallback directory: \(fallback)")
-        return fallback
+        return tabManager.selectedWorkspace?.directory ?? FileManager.default.homeDirectoryForCurrentUser.path
     }
 
     private func openFile(_ result: FileSearchResult) {
-        let fullPath = currentDirectory + "/" + result.filePath
-        NSWorkspace.shared.open(URL(fileURLWithPath: fullPath))
+        NSWorkspace.shared.open(URL(fileURLWithPath: result.absolutePath))
         isVisible = false
     }
 
