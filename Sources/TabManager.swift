@@ -15,6 +15,8 @@ final class TabManager: ObservableObject {
     @Published private var changeToken: UInt = 0
 
     private var workspaceSubs: [UUID: AnyCancellable] = [:]
+    private var tabSubs: [UUID: AnyCancellable] = [:]
+    private var tabListSubs: Set<AnyCancellable> = []
 
     var selectedWorkspace: Workspace? {
         guard let id = selectedWorkspaceId else { return workspaces.first }
@@ -78,6 +80,24 @@ final class TabManager: ObservableObject {
                 if let self { SessionPersistence.save(tabManager: self) }
             }
         }
+        // Also observe each tab so customName changes trigger a save
+        for tab in ws.tabs { observeTab(tab) }
+        ws.$tabs
+            .dropFirst()
+            .sink { [weak self] tabs in
+                guard let self else { return }
+                for tab in tabs { self.observeTab(tab) }
+            }
+            .store(in: &tabListSubs)
+    }
+
+    private func observeTab(_ tab: Tab) {
+        guard tabSubs[tab.id] == nil else { return }
+        tabSubs[tab.id] = tab.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                if let self { SessionPersistence.save(tabManager: self) }
+            }
+        }
     }
 
     // MARK: - Session restore
@@ -94,6 +114,8 @@ final class TabManager: ObservableObject {
         }
         workspaces.removeAll()
         workspaceSubs.removeAll()
+        tabSubs.removeAll()
+        tabListSubs.removeAll()
 
         for wsSnap in snapshot.workspaces {
             let ws = Workspace(id: wsSnap.id, directory: wsSnap.directory)
@@ -158,6 +180,7 @@ final class TabManager: ObservableObject {
         if let ws = workspaces.first(where: { $0.id == id }) {
             for tab in ws.tabs {
                 tab.terminalView?.removeFromSuperview()
+                tabSubs.removeValue(forKey: tab.id)
             }
             ws.splitLayout = nil
         }
@@ -243,6 +266,7 @@ final class TabManager: ObservableObject {
     }
 
     func closeTab(_ id: UUID) {
+        tabSubs.removeValue(forKey: id)
         for ws in workspaces {
             if ws.closeTab(id) {
                 // Workspace is now empty, remove it
