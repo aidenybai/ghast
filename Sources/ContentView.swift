@@ -721,7 +721,7 @@ struct TerminalContainerView: NSViewRepresentable {
         if let layout = ws.splitLayout {
             let tabIds = Set(ws.tabs.map { $0.id })
             for splitTabId in layout.allTabIds where !tabIds.contains(splitTabId) {
-                layout.removeTab(splitTabId)
+                let _ = layout.removeTab(splitTabId)
             }
             if layout.allTabIds.count <= 1 {
                 ws.splitLayout = nil

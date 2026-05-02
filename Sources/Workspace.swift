@@ -40,8 +40,8 @@ final class Workspace: Identifiable, ObservableObject {
         tabs.contains { $0.isRunningCommand }
     }
 
-    init(directory: String) {
-        self.id = UUID()
+    init(id: UUID = UUID(), directory: String) {
+        self.id = id
         self.directory = directory
     }
 
@@ -86,7 +86,7 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Remove from split layout
         if let layout = splitLayout {
-            layout.removeTab(id)
+            let _ = layout.removeTab(id)
             let remaining = layout.allTabIds
             if remaining.count <= 1 {
                 // Back to single pane

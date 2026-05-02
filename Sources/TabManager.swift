@@ -91,7 +91,7 @@ final class TabManager: ObservableObject {
         workspaceSubs.removeAll()
 
         for wsSnap in snapshot.workspaces {
-            let ws = Workspace(directory: wsSnap.directory)
+            let ws = Workspace(id: wsSnap.id, directory: wsSnap.directory)
             ws.customName = wsSnap.customName
 
             for tabSnap in wsSnap.tabs {
