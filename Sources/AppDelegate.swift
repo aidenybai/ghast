@@ -21,6 +21,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = GhosttyManager.shared
 
         createNewWindow()
+        // Restore previous session
+        if let tabManager = tabManagers.first {
+            tabManager.restoreSession()
+        }
 
         // Build main menu
         NSApp.mainMenu = buildMainMenu()
@@ -134,10 +138,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let quickSwitcherItem = NSMenuItem(
             title: "Quick Switcher",
             action: #selector(toggleQuickSwitcher(_:)),
-            keyEquivalent: "K"
+            keyEquivalent: "k"
         )
         quickSwitcherItem.keyEquivalentModifierMask = [.command, .shift]
         navigateMenu.addItem(quickSwitcherItem)
+        let fileSearchItem = NSMenuItem(
+            title: "File Search",
+            action: #selector(toggleFileSearch(_:)),
+            keyEquivalent: "f"
+        )
+        fileSearchItem.keyEquivalentModifierMask = [.command, .shift]
+        navigateMenu.addItem(fileSearchItem)
         let navigateMenuItem = NSMenuItem()
         navigateMenuItem.submenu = navigateMenu
         mainMenu.addItem(navigateMenuItem)
@@ -146,7 +157,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleQuickSwitcher(_ sender: Any?) {
-        NotificationCenter.default.post(name: .toggleQuickSwitcher, object: nil)
+        NotificationCenter.default.post(name: .toggleQuickSwitcher, object: focusedTabManager)
+    }
+
+    @objc private func toggleFileSearch(_ sender: Any?) {
+        NotificationCenter.default.post(name: .toggleFileSearch, object: focusedTabManager)
     }
 
     // MARK: - Menu actions
@@ -160,7 +175,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func closeTab(_ sender: Any?) {
-        guard let mgr = focusedTabManager, let tab = mgr.selectedTab else { return }
+        guard let mgr = focusedTabManager else { return }
+        // Close the selected tab, or the first tab if none selected
+        let tabToClose = mgr.selectedTab ?? mgr.selectedWorkspace?.tabs.first
+        guard let tab = tabToClose else { return }
         mgr.closeTab(tab.id)
     }
 

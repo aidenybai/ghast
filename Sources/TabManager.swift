@@ -75,7 +75,59 @@ final class TabManager: ObservableObject {
         workspaceSubs[ws.id] = ws.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async {
                 self?.changeToken &+= 1
+                if let self { SessionPersistence.save(tabManager: self) }
             }
+        }
+    }
+
+    // MARK: - Session restore
+
+    func restoreSession() {
+        guard let snapshot = SessionPersistence.load(),
+              !snapshot.workspaces.isEmpty else { return }
+
+        // Clear default workspace created in init
+        workspaces.removeAll()
+        workspaceSubs.removeAll()
+
+        for wsSnap in snapshot.workspaces {
+            let ws = Workspace(directory: wsSnap.directory)
+            ws.customName = wsSnap.customName
+
+            for tabSnap in wsSnap.tabs {
+                let tab = Tab(
+                    id: tabSnap.id,
+                    workingDirectory: tabSnap.workingDirectory,
+                    tmuxSessionName: nil
+                )
+                tab.customName = tabSnap.customName
+                ws.tabs.append(tab)
+            }
+
+            ws.splitLayout = wsSnap.splitLayout.flatMap(SplitNode.deserialize)
+
+            if let selId = wsSnap.selectedTabId,
+               let match = ws.tabs.first(where: { $0.id == selId }) {
+                ws.selectedTabId = match.id
+            } else {
+                ws.selectedTabId = ws.tabs.first?.id
+            }
+
+            if let zoomedId = wsSnap.zoomedTabId,
+               ws.tabs.contains(where: { $0.id == zoomedId }),
+               ws.splitLayout?.allTabIds.contains(zoomedId) == true {
+                ws.zoomedTabId = zoomedId
+            }
+
+            workspaces.append(ws)
+            observeWorkspace(ws)
+        }
+
+        if let savedId = snapshot.selectedWorkspaceId,
+           workspaces.contains(where: { $0.id == savedId }) {
+            selectedWorkspaceId = savedId
+        } else {
+            selectedWorkspaceId = workspaces.first?.id
         }
     }
 

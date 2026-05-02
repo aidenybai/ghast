@@ -14,6 +14,9 @@ final class Tab: Identifiable, ObservableObject {
     /// Working directory to use when creating the terminal.
     var initialWorkingDirectory: String?
 
+    /// Tmux session name for persistent sessions.
+    var tmuxSessionName: String?
+
     // Search state (driven by Ghostty actions, displayed by SearchBarView)
     @Published var isSearching: Bool = false
     @Published var searchNeedle: String = ""
@@ -50,16 +53,22 @@ final class Tab: Identifiable, ObservableObject {
 
     var displayName: String { customName ?? title }
 
-    init(id: UUID = UUID(), title: String = "Terminal", workingDirectory: String? = nil) {
+    init(id: UUID = UUID(), title: String = "Terminal", workingDirectory: String? = nil, tmuxSessionName: String? = nil) {
         self.id = id
         self.title = title
         self.initialWorkingDirectory = workingDirectory
+        self.tmuxSessionName = tmuxSessionName
     }
 
     /// Creates and returns the terminal NSView for embedding in the window.
     func makeTerminalView(frame: NSRect) -> TerminalView {
         if let existing = terminalView { return existing }
-        let view = TerminalView(frame: frame, tabId: id, workingDirectory: initialWorkingDirectory)
+        let view = TerminalView(
+            frame: frame,
+            tabId: id,
+            workingDirectory: initialWorkingDirectory,
+            tmuxSessionName: tmuxSessionName
+        )
         terminalView = view
         return view
     }

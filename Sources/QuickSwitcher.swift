@@ -14,6 +14,7 @@ struct QuickSwitcherView: View {
     @Binding var isVisible: Bool
     @State private var query: String = ""
     @State private var selectedIndex: Int = 0
+    @State private var keyMonitor: Any?
     @FocusState private var isSearchFocused: Bool
 
     private var items: [QuickSwitcherItem] {
@@ -23,12 +24,14 @@ struct QuickSwitcherView: View {
                 id: ws.id, workspaceId: ws.id, tabId: nil,
                 title: ws.displayName, subtitle: ws.directory, isWorkspace: true
             ))
-            for tab in ws.tabs {
-                result.append(QuickSwitcherItem(
-                    id: tab.id, workspaceId: ws.id, tabId: tab.id,
-                    title: tab.displayName.isEmpty ? "Terminal" : tab.displayName,
-                    subtitle: ws.displayName, isWorkspace: false
-                ))
+            if ws.tabs.count > 1 {
+                for tab in ws.tabs {
+                    result.append(QuickSwitcherItem(
+                        id: tab.id, workspaceId: ws.id, tabId: tab.id,
+                        title: (tab.customName ?? tab.title).isEmpty ? "Terminal" : (tab.customName ?? tab.title),
+                        subtitle: ws.displayName, isWorkspace: false
+                    ))
+                }
             }
             return result
         }
@@ -39,8 +42,53 @@ struct QuickSwitcherView: View {
 
     private func select(_ item: QuickSwitcherItem) {
         tabManager.selectWorkspace(item.workspaceId)
-        if let tabId = item.tabId { tabManager.selectTab(tabId) }
+        if let tabId = item.tabId {
+            tabManager.selectTab(tabId)
+            // Focus the selected tab's terminal
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                if let tab = self.tabManager.selectedTab {
+                    tab.focus()
+                }
+            }
+        }
         isVisible = false
+    }
+
+    private func installKeyMonitor() {
+        removeKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard isVisible else { return event }
+            switch event.keyCode {
+            case 53:
+                isVisible = false
+                return nil
+            case 125:
+                if !items.isEmpty {
+                    selectedIndex = min(selectedIndex + 1, items.count - 1)
+                }
+                return nil
+            case 126:
+                if !items.isEmpty {
+                    selectedIndex = max(selectedIndex - 1, 0)
+                }
+                return nil
+            case 36, 76:
+                if !items.isEmpty {
+                    select(items[min(selectedIndex, items.count - 1)])
+                    return nil
+                }
+                return event
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
     }
 
     var body: some View {
@@ -109,11 +157,17 @@ struct QuickSwitcherView: View {
                     .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
             )
             .frame(width: 420)
-            .onAppear { isSearchFocused = true; selectedIndex = 0 }
+            .onAppear {
+                selectedIndex = 0
+                installKeyMonitor()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    isSearchFocused = true
+                }
+            }
+            .onDisappear {
+                removeKeyMonitor()
+            }
             .onChange(of: query) { _ in selectedIndex = 0 }
         }
-        .onKeyPress(.escape) { isVisible = false; return .handled }
-        .onKeyPress(.downArrow) { if !items.isEmpty { selectedIndex = min(selectedIndex + 1, items.count - 1) }; return .handled }
-        .onKeyPress(.upArrow) { selectedIndex = max(selectedIndex - 1, 0); return .handled }
     }
 }

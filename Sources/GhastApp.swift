@@ -3,6 +3,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let toggleQuickSwitcher = Notification.Name("toggleQuickSwitcher")
+    static let toggleFileSearch = Notification.Name("toggleFileSearch")
 }
 
 @main

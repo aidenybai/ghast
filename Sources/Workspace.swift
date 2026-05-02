@@ -49,7 +49,7 @@ final class Workspace: Identifiable, ObservableObject {
     func createTab() -> Tab {
         // Inherit working directory from the current tab if available
         let dir = selectedTab?.currentDirectory ?? directory
-        let tab = Tab(workingDirectory: dir)
+        let tab = Tab(workingDirectory: dir, tmuxSessionName: nil)
         tabs.append(tab)
         selectedTabId = tab.id
         return tab
@@ -62,7 +62,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard now.timeIntervalSince(lastSplitTime) > 0.5 else { return nil }
         lastSplitTime = now
 
-        let tab = Tab(workingDirectory: directory)
+        let tab = Tab(workingDirectory: directory, tmuxSessionName: nil)
         tabs.append(tab)
 
         if let layout = splitLayout {

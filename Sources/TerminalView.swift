@@ -14,11 +14,13 @@ class TerminalView: NSView, NSTextInputClient {
     let surfaceId: UUID
     let tabId: UUID
     var workingDirectory: String?
+    var tmuxSessionName: String?
 
-    init(frame: NSRect, tabId: UUID, workingDirectory: String? = nil) {
+    init(frame: NSRect, tabId: UUID, workingDirectory: String? = nil, tmuxSessionName: String? = nil) {
         self.surfaceId = UUID()
         self.tabId = tabId
         self.workingDirectory = workingDirectory
+        self.tmuxSessionName = tmuxSessionName
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = true
@@ -53,7 +55,7 @@ class TerminalView: NSView, NSTextInputClient {
         config.scale_factor = Double(window?.backingScaleFactor ?? 2.0)
         config.context = GHOSTTY_SURFACE_CONTEXT_TAB
 
-        // Set working directory if provided (so new tabs open in the workspace's directory)
+        // Set working directory if provided
         let cWorkingDir = workingDirectory.flatMap { strdup($0) }
         config.working_directory = UnsafePointer(cWorkingDir)
 

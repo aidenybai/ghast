@@ -1,4 +1,4 @@
-import AppKit
+ import AppKit
 import Combine
 import SwiftUI
 
@@ -7,6 +7,7 @@ struct ContentView: View {
     @ObservedObject var tabManager: TabManager
     @State private var sidebarWidth: CGFloat = 180
     @State private var isQuickSwitcherVisible: Bool = false
+    @State private var isFileSearchVisible: Bool = false
 
     private var bgColor: Color { Color(nsColor: GhosttyManager.shared.backgroundColor) }
 
@@ -46,10 +47,19 @@ struct ContentView: View {
         .overlay {
             if isQuickSwitcherVisible {
                 QuickSwitcherView(tabManager: tabManager, isVisible: $isQuickSwitcherVisible)
+            } else if isFileSearchVisible {
+                FileSearchView(tabManager: tabManager, isVisible: $isFileSearchVisible)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleQuickSwitcher)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .toggleQuickSwitcher)) { notification in
+            guard notification.object as? TabManager === tabManager else { return }
+            isFileSearchVisible = false
             isQuickSwitcherVisible.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleFileSearch)) { notification in
+            guard notification.object as? TabManager === tabManager else { return }
+            isQuickSwitcherVisible = false
+            isFileSearchVisible.toggle()
         }
     }
 
@@ -326,18 +336,18 @@ struct WorkspaceItemView: View {
                 .fill(isSelected ? Color.white.opacity(0.06) : isHovering ? Color.white.opacity(0.03) : Color.clear)
         )
         .onHover { isHovering = $0 }
-        .onTapGesture(count: 2) {
-            editText = workspace.customName ?? workspace.displayName
-            isEditing = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                isTextFieldFocused = true
-            }
-        }
         .onTapGesture(count: 1) {
             if isEditing {
                 commitEdit()
             } else {
                 onSelect()
+            }
+        }
+        .onTapGesture(count: 2) {
+            editText = workspace.customName ?? workspace.displayName
+            isEditing = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isTextFieldFocused = true
             }
         }
     }
