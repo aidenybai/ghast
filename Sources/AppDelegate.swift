@@ -143,7 +143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         quickSwitcherItem.keyEquivalentModifierMask = [.command, .shift]
         navigateMenu.addItem(quickSwitcherItem)
         let fileSearchItem = NSMenuItem(
-            title: "File Search",
+            title: "History Search",
             action: #selector(toggleFileSearch(_:)),
             keyEquivalent: "f"
         )

@@ -785,13 +785,19 @@ struct TerminalContainerView: NSViewRepresentable {
             splitContainer.isHidden = false
             splitContainer.update(with: layout, tabLookup: tabLookup)
 
-            // Refresh visible surfaces
+            // Hide any direct TerminalView subviews (left over from single-tab mode)
+            for subview in container.subviews where subview is TerminalView {
+                subview.isHidden = true
+            }
+
+            // Refresh visible surfaces and focus the selected pane
             for tabId in layout.allTabIds {
                 if let tab = tabLookup(tabId), let tv = tab.terminalView, let surface = tv.surface {
                     ghostty_surface_refresh(surface)
                     tv.needsDisplay = true
                 }
             }
+            DispatchQueue.main.async { selectedTab.focus() }
         } else {
             // Single tab mode — hide split container but don't remove it
             for subview in container.subviews where subview is SplitContainerView {
