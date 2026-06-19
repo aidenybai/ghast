@@ -7,6 +7,8 @@ import Foundation
 final class TabManager: ObservableObject {
     weak var window: NSWindow?
 
+    let windowId: UUID
+
     @Published var workspaces: [Workspace] = []
     @Published var selectedWorkspaceId: UUID?
     @Published var isSidebarVisible: Bool = true
@@ -15,6 +17,11 @@ final class TabManager: ObservableObject {
     @Published private var changeToken: UInt = 0
 
     private var workspaceSubs: [UUID: AnyCancellable] = [:]
+    private var tabSubs: [UUID: AnyCancellable] = [:]
+    private var tabListSubs: [UUID: AnyCancellable] = [:]
+
+    private let tabSaveSubject = PassthroughSubject<Void, Never>()
+    private var tabSaveCancellable: AnyCancellable?
 
     var selectedWorkspace: Workspace? {
         guard let id = selectedWorkspaceId else { return workspaces.first }
@@ -35,7 +42,15 @@ final class TabManager: ObservableObject {
         }
     }
 
-    init() {
+    init(windowId: UUID = UUID()) {
+        self.windowId = windowId
+
+        tabSaveCancellable = tabSaveSubject
+            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main)
+            .sink { [weak self] in
+                if let self { SessionPersistence.save(tabManager: self) }
+            }
+
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
         let workspace = addWorkspace(directory: homeDir)
         workspace.createTab()
@@ -49,8 +64,8 @@ final class TabManager: ObservableObject {
                 // Find the workspace containing this tab and update selection
                 for ws in self.workspaces {
                     if ws.tabs.contains(where: { $0.id == tabId }) {
-                        if let layout = ws.splitLayout, layout.allTabIds.contains(tabId) {
-                            // In split mode: just update selected tab, keep layout
+                        if let layout = ws.splitLayout, layout.allTabIds.contains(tabId),
+                           ws.selectedTabId != tabId {
                             ws.selectedTabId = tabId
                         }
                         break
@@ -77,6 +92,80 @@ final class TabManager: ObservableObject {
                 self?.changeToken &+= 1
             }
         }
+        for tab in ws.tabs { observeTab(tab) }
+        tabListSubs[ws.id] = ws.$tabs
+            .dropFirst()
+            .sink { [weak self] tabs in
+                guard let self else { return }
+                for tab in tabs { self.observeTab(tab) }
+                self.tabSaveSubject.send()
+            }
+    }
+
+    private func observeTab(_ tab: Tab) {
+        tabSubs[tab.id]?.cancel()
+        tabSubs[tab.id] = tab.objectWillChange.sink { [weak self] _ in
+            self?.tabSaveSubject.send()
+        }
+    }
+
+    // MARK: - Session restore
+
+    func restoreSession() {
+        // ponytail: falls back to legacy session.json for one-time migration
+        guard let snapshot = SessionPersistence.load(for: windowId) ?? SessionPersistence.loadLegacy(),
+              !snapshot.workspaces.isEmpty else { return }
+
+        // Clean up terminal views before clearing workspaces
+        for ws in workspaces {
+            for tab in ws.tabs {
+                tab.terminalView?.removeFromSuperview()
+            }
+        }
+        workspaces.removeAll()
+        workspaceSubs.removeAll()
+        tabSubs.removeAll()
+        tabListSubs.removeAll()
+
+        for wsSnap in snapshot.workspaces {
+            let ws = Workspace(id: wsSnap.id, directory: wsSnap.directory)
+            ws.customName = wsSnap.customName
+
+            for tabSnap in wsSnap.tabs {
+                let tab = Tab(
+                    id: tabSnap.id,
+                    workingDirectory: tabSnap.workingDirectory,
+                    tmuxSessionName: tabSnap.tmuxSessionName
+                )
+                tab.customName = tabSnap.customName
+                ws.tabs.append(tab)
+            }
+
+            ws.splitLayout = wsSnap.splitLayout.flatMap(SplitNode.deserialize)
+
+            if let selId = wsSnap.selectedTabId,
+               let match = ws.tabs.first(where: { $0.id == selId }) {
+                ws.selectedTabId = match.id
+            } else {
+                ws.selectedTabId = ws.tabs.first?.id
+            }
+
+            if let zoomedId = wsSnap.zoomedTabId,
+               ws.tabs.contains(where: { $0.id == zoomedId }),
+               ws.splitLayout?.allTabIds.contains(zoomedId) == true {
+                ws.zoomedTabId = zoomedId
+            }
+
+            workspaces.append(ws)
+            observeWorkspace(ws)
+        }
+
+        if let savedId = snapshot.selectedWorkspaceId,
+           workspaces.contains(where: { $0.id == savedId }) {
+            selectedWorkspaceId = savedId
+        } else {
+            selectedWorkspaceId = workspaces.first?.id
+        }
     }
 
     @discardableResult
@@ -101,11 +190,13 @@ final class TabManager: ObservableObject {
         if let ws = workspaces.first(where: { $0.id == id }) {
             for tab in ws.tabs {
                 tab.terminalView?.removeFromSuperview()
+                tabSubs.removeValue(forKey: tab.id)
             }
             ws.splitLayout = nil
         }
 
         workspaceSubs.removeValue(forKey: id)
+        tabListSubs.removeValue(forKey: id)
         workspaces.removeAll { $0.id == id }
 
         if selectedWorkspaceId == id {
@@ -135,6 +226,7 @@ final class TabManager: ObservableObject {
                 guard let tab = sourceWs.tabs.first else { return }
                 sourceWs.tabs.removeAll()
                 workspaceSubs.removeValue(forKey: sourceWs.id)
+                tabListSubs.removeValue(forKey: sourceWs.id)
                 workspaces.removeAll { $0.id == sourceWs.id }
 
                 existing.tabs.append(tab)
@@ -186,10 +278,12 @@ final class TabManager: ObservableObject {
     }
 
     func closeTab(_ id: UUID) {
+        tabSubs.removeValue(forKey: id)
         for ws in workspaces {
             if ws.closeTab(id) {
                 // Workspace is now empty, remove it
                 workspaceSubs.removeValue(forKey: ws.id)
+                tabListSubs.removeValue(forKey: ws.id)
                 workspaces.removeAll { $0.id == ws.id }
                 if selectedWorkspaceId == ws.id {
                     selectedWorkspaceId = workspaces.first?.id

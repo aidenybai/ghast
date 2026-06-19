@@ -40,8 +40,8 @@ final class Workspace: Identifiable, ObservableObject {
         tabs.contains { $0.isRunningCommand }
     }
 
-    init(directory: String) {
-        self.id = UUID()
+    init(id: UUID = UUID(), directory: String) {
+        self.id = id
         self.directory = directory
     }
 
@@ -49,7 +49,7 @@ final class Workspace: Identifiable, ObservableObject {
     func createTab() -> Tab {
         // Inherit working directory from the current tab if available
         let dir = selectedTab?.currentDirectory ?? directory
-        let tab = Tab(workingDirectory: dir)
+        let tab = Tab(workingDirectory: dir, tmuxSessionName: nil)
         tabs.append(tab)
         selectedTabId = tab.id
         return tab
@@ -62,7 +62,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard now.timeIntervalSince(lastSplitTime) > 0.5 else { return nil }
         lastSplitTime = now
 
-        let tab = Tab(workingDirectory: directory)
+        let tab = Tab(workingDirectory: directory, tmuxSessionName: nil)
         tabs.append(tab)
 
         if let layout = splitLayout {
@@ -86,7 +86,7 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Remove from split layout
         if let layout = splitLayout {
-            layout.removeTab(id)
+            let _ = layout.removeTab(id)
             let remaining = layout.allTabIds
             if remaining.count <= 1 {
                 // Back to single pane
@@ -118,7 +118,7 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     func selectTab(_ id: UUID) {
-        guard tabs.contains(where: { $0.id == id }) else { return }
+        guard selectedTabId != id, tabs.contains(where: { $0.id == id }) else { return }
         selectedTabId = id
         // Split layout is preserved — the view layer decides whether to
         // show split or single-tab based on whether selectedTab is in the layout.
@@ -128,6 +128,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard tabs.count > 1, let currentId = selectedTabId,
               let index = tabs.firstIndex(where: { $0.id == currentId }) else { return }
         let next = (index + 1) % tabs.count
+        guard tabs[next].id != currentId else { return }
         selectedTabId = tabs[next].id
     }
 
@@ -135,6 +136,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard tabs.count > 1, let currentId = selectedTabId,
               let index = tabs.firstIndex(where: { $0.id == currentId }) else { return }
         let prev = (index - 1 + tabs.count) % tabs.count
+        guard tabs[prev].id != currentId else { return }
         selectedTabId = tabs[prev].id
     }
 }

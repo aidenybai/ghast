@@ -1,10 +1,12 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Main window content: sidebar + tab bar + terminal.
 struct ContentView: View {
     @ObservedObject var tabManager: TabManager
     @State private var sidebarWidth: CGFloat = 180
+    @State private var isQuickSwitcherVisible: Bool = false
 
     private var bgColor: Color { Color(nsColor: GhosttyManager.shared.backgroundColor) }
 
@@ -41,6 +43,15 @@ struct ContentView: View {
             }
         }
         .background(bgColor)
+        .overlay {
+            if isQuickSwitcherVisible {
+                QuickSwitcherView(tabManager: tabManager, isVisible: $isQuickSwitcherVisible)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleQuickSwitcher)) { notification in
+            guard notification.object as? TabManager === tabManager else { return }
+            isQuickSwitcherVisible.toggle()
+        }
     }
 
 }
@@ -364,6 +375,7 @@ struct TabBar: View {
                 }
                 .buttonStyle(.plain)
                 .background(bgColor)
+                .keyboardShortcut(".", modifiers: .command)
 
                 Spacer()
 
@@ -426,7 +438,7 @@ struct TabListView: View {
                     draggedTabId = tab.id
                     return NSItemProvider(object: tab.id.uuidString as NSString)
                 } preview: {
-                    Text(tab.title.isEmpty ? "Terminal" : tab.title)
+                    Text(tab.displayName.isEmpty ? "Terminal" : tab.displayName)
                         .font(.system(size: 11))
                         .foregroundColor(.white)
                         .padding(.horizontal, 8)
@@ -458,6 +470,15 @@ struct TabItemView: View {
     let isOnly: Bool
     let onClose: () -> Void
     @State private var isHovering = false
+    @State private var isEditing = false
+    @State private var editText = ""
+    @FocusState private var isTextFieldFocused: Bool
+
+    private func commitEdit() {
+        let trimmed = editText.trimmingCharacters(in: .whitespaces)
+        tab.customName = trimmed.isEmpty ? nil : trimmed
+        isEditing = false
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -472,11 +493,28 @@ struct TabItemView: View {
                 .buttonStyle(.plain)
             }
 
-            Text(tab.title.isEmpty ? "Terminal" : tab.title)
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundColor(isSelected ? .white.opacity(0.9) : .white.opacity(0.4))
+            if isEditing {
+                TextField("Tab name", text: $editText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.9))
+                    .focused($isTextFieldFocused)
+                    .onSubmit { commitEdit() }
+                    .onExitCommand { isEditing = false }
+            } else {
+                Text(tab.displayName.isEmpty ? "Terminal" : tab.displayName)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundColor(isSelected ? .white.opacity(0.9) : .white.opacity(0.4))
+                    .onTapGesture(count: 2) {
+                        editText = tab.customName ?? tab.title
+                        isEditing = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isTextFieldFocused = true
+                        }
+                    }
+            }
 
             if index < 9 {
                 Text("\u{2318}\(index + 1)")
@@ -670,17 +708,6 @@ struct TerminalContainerView: NSViewRepresentable {
 
         let tabLookup: (UUID) -> Tab? = { id in ws.tabs.first { $0.id == id } }
 
-        // Clean up stale tab IDs from split layout
-        if let layout = ws.splitLayout {
-            let tabIds = Set(ws.tabs.map { $0.id })
-            for splitTabId in layout.allTabIds where !tabIds.contains(splitTabId) {
-                layout.removeTab(splitTabId)
-            }
-            if layout.allTabIds.count <= 1 {
-                ws.splitLayout = nil
-            }
-        }
-
         // ZOOM MODE: show a single pane fullscreen while preserving the split tree
         if let zoomedId = ws.zoomedTabId,
            let layout = ws.splitLayout,
@@ -738,13 +765,19 @@ struct TerminalContainerView: NSViewRepresentable {
             splitContainer.isHidden = false
             splitContainer.update(with: layout, tabLookup: tabLookup)
 
-            // Refresh visible surfaces
+            // Hide any direct TerminalView subviews (left over from single-tab mode)
+            for subview in container.subviews where subview is TerminalView {
+                subview.isHidden = true
+            }
+
+            // Refresh visible surfaces and focus the selected pane
             for tabId in layout.allTabIds {
                 if let tab = tabLookup(tabId), let tv = tab.terminalView, let surface = tv.surface {
                     ghostty_surface_refresh(surface)
                     tv.needsDisplay = true
                 }
             }
+            DispatchQueue.main.async { selectedTab.focus() }
         } else {
             // Single tab mode — hide split container but don't remove it
             for subview in container.subviews where subview is SplitContainerView {

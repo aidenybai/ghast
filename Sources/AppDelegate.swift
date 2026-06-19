@@ -20,7 +20,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Force Ghostty initialization
         _ = GhosttyManager.shared
 
-        createNewWindow()
+        let windowIds = SessionPersistence.allWindowIds()
+        if windowIds.isEmpty {
+            createNewWindow()
+        } else {
+            for wid in windowIds {
+                createNewWindow(windowId: wid)
+            }
+        }
+
+        // Restore each window's own session
+        for tabManager in tabManagers {
+            tabManager.restoreSession()
+        }
 
         // Build main menu
         NSApp.mainMenu = buildMainMenu()
@@ -33,8 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Window management
 
-    func createNewWindow() {
-        let tabManager = TabManager()
+    func createNewWindow(windowId: UUID? = nil) {
+        let tabManager = TabManager(windowId: windowId ?? UUID())
         tabManagers.append(tabManager)
 
         let contentView = ContentView(tabManager: tabManager)
@@ -129,7 +141,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        // Navigate menu
+        let navigateMenu = NSMenu(title: "Navigate")
+        let quickSwitcherItem = NSMenuItem(
+            title: "Quick Switcher",
+            action: #selector(toggleQuickSwitcher(_:)),
+            keyEquivalent: "k"
+        )
+        quickSwitcherItem.keyEquivalentModifierMask = [.command, .shift]
+        navigateMenu.addItem(quickSwitcherItem)
+        let fileSearchItem = NSMenuItem(
+            title: "History Search",
+            action: #selector(toggleFileSearch(_:)),
+            keyEquivalent: "f"
+        )
+        fileSearchItem.keyEquivalentModifierMask = [.command, .shift]
+        navigateMenu.addItem(fileSearchItem)
+        let navigateMenuItem = NSMenuItem()
+        navigateMenuItem.submenu = navigateMenu
+        mainMenu.addItem(navigateMenuItem)
+
         return mainMenu
+    }
+
+    @objc private func toggleQuickSwitcher(_ sender: Any?) {
+        NotificationCenter.default.post(name: .toggleQuickSwitcher, object: focusedTabManager)
+    }
+
+    @objc private func toggleFileSearch(_ sender: Any?) {
+        guard let mgr = focusedTabManager,
+              let tab = mgr.selectedTab,
+              let surface = tab.terminalView?.surface else { return }
+        // ponytail: trigger Ghostty's built-in scrollback search — no custom SwiftUI search bar needed.
+        // Ghostty handles search input, highlighting, and navigation internally.
+        // Results flow through GHOSTTY_ACTION_SEARCH_TOTAL/SELECTED → SearchBarView.
+        "start_search".withCString { ptr in
+            _ = ghostty_surface_binding_action(surface, ptr, 12)
+        }
     }
 
     // MARK: - Menu actions
@@ -143,7 +191,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func closeTab(_ sender: Any?) {
-        guard let mgr = focusedTabManager, let tab = mgr.selectedTab else { return }
+        guard let mgr = focusedTabManager else { return }
+        // Close the selected tab, or the first tab if none selected
+        let tabToClose = mgr.selectedTab ?? mgr.selectedWorkspace?.tabs.first
+        guard let tab = tabToClose else { return }
         mgr.closeTab(tab.id)
     }
 

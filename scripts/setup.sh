@@ -22,7 +22,7 @@ if [ -d "$XCFRAMEWORK" ]; then
 else
     echo "Building GhosttyKit.xcframework (this takes a few minutes)..."
     cd ghostty
-    zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
+    zig build -Demit-xcframework=true -Dxcframework-target=native -Doptimize=ReleaseFast
     cd "$ROOT"
     echo "GhosttyKit.xcframework built successfully."
 fi

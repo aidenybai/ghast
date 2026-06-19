@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let toggleQuickSwitcher = Notification.Name("toggleQuickSwitcher")
+    static let toggleFileSearch = Notification.Name("toggleFileSearch")
+}
+
 @main
 struct GhastApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
