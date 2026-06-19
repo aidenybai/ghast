@@ -52,3 +52,51 @@ targets:
     dependencies:
       - framework: ghostty/macos/GhosttyKit.xcframework
         embed: false
+
+    # ponytail: copy ghostty's terminfo + shell-integration into the app bundle so
+    # libghostty finds them at runtime. zig-out/share is the canonical layout.
+    preBuildScripts:
+      - script: |
+          set -euo pipefail
+          SHARE="$PROJECT_DIR/ghostty/zig-out/share"
+          DEST="$PROJECT_DIR/Resources/ghostty"
+          if [ ! -d "$SHARE/terminfo" ] || [ ! -d "$SHARE/ghostty/shell-integration" ]; then
+            echo "warning: ghostty resources not found in zig-out/share; terminfo/shell-integration will be missing"
+            exit 0
+          fi
+          mkdir -p "$DEST"
+          rm -rf "$DEST/terminfo" "$DEST/shell-integration"
+          cp -R "$SHARE/terminfo" "$DEST/terminfo"
+          cp -R "$SHARE/ghostty/shell-integration" "$DEST/shell-integration"
+        name: Copy Ghostty Resources
+
+    # Copy the prepared Resources/ghostty tree into the bundle so libghostty
+    # finds terminfo + shell-integration at runtime (GHOSTTY_RESOURCES_DIR).
+    postBuildScripts:
+      - script: |
+          set -euo pipefail
+          SRC="$PROJECT_DIR/Resources/ghostty"
+          BUNDLE_RES="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources"
+          if [ ! -d "$SRC/terminfo" ] || [ ! -d "$SRC/shell-integration" ]; then
+            echo "warning: ghostty resources missing; skipping bundle copy"
+            exit 0
+          fi
+          mkdir -p "$BUNDLE_RES/ghostty"
+          rm -rf "$BUNDLE_RES/ghostty/terminfo" "$BUNDLE_RES/ghostty/shell-integration"
+          cp -R "$SRC/terminfo" "$BUNDLE_RES/ghostty/terminfo"
+          cp -R "$SRC/shell-integration" "$BUNDLE_RES/ghostty/shell-integration"
+        name: Copy Ghostty Resources to Bundle
+
+schemes:
+  ghast:
+    build:
+      targets:
+        ghast: all
+    run:
+      config: Debug
+      environmentVariables:
+        # ponytail: silences macOS system-framework XPC spam (com.apple.linkd.autoShortcut,
+        # task port right errors) that fires before app code runs in unsigned dev builds.
+        - variable: OS_ACTIVITY_MODE
+          value: disable
+          isEnabled: true

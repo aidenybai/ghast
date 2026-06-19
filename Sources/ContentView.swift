@@ -1,4 +1,4 @@
- import AppKit
+import AppKit
 import Combine
 import SwiftUI
 
@@ -7,7 +7,6 @@ struct ContentView: View {
     @ObservedObject var tabManager: TabManager
     @State private var sidebarWidth: CGFloat = 180
     @State private var isQuickSwitcherVisible: Bool = false
-    @State private var isFileSearchVisible: Bool = false
 
     private var bgColor: Color { Color(nsColor: GhosttyManager.shared.backgroundColor) }
 
@@ -47,19 +46,11 @@ struct ContentView: View {
         .overlay {
             if isQuickSwitcherVisible {
                 QuickSwitcherView(tabManager: tabManager, isVisible: $isQuickSwitcherVisible)
-            } else if isFileSearchVisible {
-                FileSearchView(tabManager: tabManager, isVisible: $isFileSearchVisible)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleQuickSwitcher)) { notification in
             guard notification.object as? TabManager === tabManager else { return }
-            isFileSearchVisible = false
             isQuickSwitcherVisible.toggle()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleFileSearch)) { notification in
-            guard notification.object as? TabManager === tabManager else { return }
-            isQuickSwitcherVisible = false
-            isFileSearchVisible.toggle()
         }
     }
 
@@ -716,17 +707,6 @@ struct TerminalContainerView: NSViewRepresentable {
         }
 
         let tabLookup: (UUID) -> Tab? = { id in ws.tabs.first { $0.id == id } }
-
-        // Clean up stale tab IDs from split layout
-        if let layout = ws.splitLayout {
-            let tabIds = Set(ws.tabs.map { $0.id })
-            for splitTabId in layout.allTabIds where !tabIds.contains(splitTabId) {
-                let _ = layout.removeTab(splitTabId)
-            }
-            if layout.allTabIds.count <= 1 {
-                ws.splitLayout = nil
-            }
-        }
 
         // ZOOM MODE: show a single pane fullscreen while preserving the split tree
         if let zoomedId = ws.zoomedTabId,

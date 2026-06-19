@@ -118,7 +118,7 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     func selectTab(_ id: UUID) {
-        guard tabs.contains(where: { $0.id == id }) else { return }
+        guard selectedTabId != id, tabs.contains(where: { $0.id == id }) else { return }
         selectedTabId = id
         // Split layout is preserved — the view layer decides whether to
         // show split or single-tab based on whether selectedTab is in the layout.
@@ -128,6 +128,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard tabs.count > 1, let currentId = selectedTabId,
               let index = tabs.firstIndex(where: { $0.id == currentId }) else { return }
         let next = (index + 1) % tabs.count
+        guard tabs[next].id != currentId else { return }
         selectedTabId = tabs[next].id
     }
 
@@ -135,6 +136,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard tabs.count > 1, let currentId = selectedTabId,
               let index = tabs.firstIndex(where: { $0.id == currentId }) else { return }
         let prev = (index - 1 + tabs.count) % tabs.count
+        guard tabs[prev].id != currentId else { return }
         selectedTabId = tabs[prev].id
     }
 }

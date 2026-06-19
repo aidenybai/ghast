@@ -3,7 +3,12 @@ import AppKit
 
 // MARK: - History loading
 
+/// Cached for the lifetime of the app so repeated opens of History Search
+/// don't re-read and re-parse the shell history file from disk each time.
+private var cachedHistory: [String]?
+
 private func loadHistory() -> [String] {
+    if let cachedHistory { return cachedHistory }
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let candidates = [
         "\(home)/.zsh_history",
@@ -34,9 +39,11 @@ private func loadHistory() -> [String] {
             for cmd in entries.reversed() {
                 if seen.insert(cmd).inserted { deduped.append(cmd) }
             }
+            cachedHistory = deduped
             return deduped
         }
     }
+    cachedHistory = []
     return []
 }
 
@@ -96,9 +103,10 @@ struct FileSearchView: View {
                     selectedIndex = max(selectedIndex - 1, 0)
                 }
                 return nil
-            case 36: // Enter — paste + run
+            case 36: // Enter — Cmd+Enter pastes without running, plain Enter runs
                 if !filtered.isEmpty {
-                    runCommand(filtered[min(selectedIndex, filtered.count - 1)], execute: true)
+                    let cmd = filtered[min(selectedIndex, filtered.count - 1)]
+                    runCommand(cmd, execute: !event.modifierFlags.contains(.command))
                 }
                 return nil
             case 76: // Numpad Enter — paste only
@@ -107,13 +115,6 @@ struct FileSearchView: View {
                 }
                 return nil
             default:
-                // Cmd+Enter — paste without running
-                if event.keyCode == 36 && event.modifierFlags.contains(.command) {
-                    if !filtered.isEmpty {
-                        runCommand(filtered[min(selectedIndex, filtered.count - 1)], execute: false)
-                    }
-                    return nil
-                }
                 return event
             }
         }
@@ -221,9 +222,14 @@ struct FileSearchView: View {
             )
             .frame(width: 560)
             .onAppear {
-                allHistory = loadHistory()
-                filtered = allHistory
                 installKeyMonitor()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let history = loadHistory()
+                    DispatchQueue.main.async {
+                        allHistory = history
+                        filtered = history
+                    }
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isSearchFocused = true }
             }
             .onDisappear { removeKeyMonitor() }

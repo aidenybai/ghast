@@ -20,9 +20,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Force Ghostty initialization
         _ = GhosttyManager.shared
 
-        createNewWindow()
-        // Restore previous session
-        if let tabManager = tabManagers.first {
+        let windowIds = SessionPersistence.allWindowIds()
+        if windowIds.isEmpty {
+            createNewWindow()
+        } else {
+            for wid in windowIds {
+                createNewWindow(windowId: wid)
+            }
+        }
+
+        // Restore each window's own session
+        for tabManager in tabManagers {
             tabManager.restoreSession()
         }
 
@@ -37,8 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Window management
 
-    func createNewWindow() {
-        let tabManager = TabManager()
+    func createNewWindow(windowId: UUID? = nil) {
+        let tabManager = TabManager(windowId: windowId ?? UUID())
         tabManagers.append(tabManager)
 
         let contentView = ContentView(tabManager: tabManager)
@@ -161,7 +169,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleFileSearch(_ sender: Any?) {
-        NotificationCenter.default.post(name: .toggleFileSearch, object: focusedTabManager)
+        guard let mgr = focusedTabManager,
+              let tab = mgr.selectedTab,
+              let surface = tab.terminalView?.surface else { return }
+        // ponytail: trigger Ghostty's built-in scrollback search — no custom SwiftUI search bar needed.
+        // Ghostty handles search input, highlighting, and navigation internally.
+        // Results flow through GHOSTTY_ACTION_SEARCH_TOTAL/SELECTED → SearchBarView.
+        "start_search".withCString { ptr in
+            _ = ghostty_surface_binding_action(surface, ptr, 12)
+        }
     }
 
     // MARK: - Menu actions

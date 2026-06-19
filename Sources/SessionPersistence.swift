@@ -28,11 +28,16 @@ struct SessionSnapshot: Codable {
 
 @MainActor
 struct SessionPersistence {
-    private static var saveURL: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+    private static var saveDir: URL {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let dir = support.appendingPathComponent("ghast", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("session.json")
+        return dir
+    }
+
+    private static func saveURL(for windowId: UUID) -> URL {
+        saveDir.appendingPathComponent("session_\(windowId.uuidString).json")
     }
 
     static func save(tabManager: TabManager) {
@@ -59,18 +64,33 @@ struct SessionPersistence {
         )
 
         if let data = try? JSONEncoder().encode(snapshot) {
-            try? data.write(to: saveURL)
+            try? data.write(to: saveURL(for: tabManager.windowId))
         }
     }
 
-    static func load() -> SessionSnapshot? {
-        guard let data = try? Data(contentsOf: saveURL),
+    static func load(for windowId: UUID) -> SessionSnapshot? {
+        guard let data = try? Data(contentsOf: saveURL(for: windowId)),
               let snapshot = try? JSONDecoder().decode(SessionSnapshot.self, from: data)
         else { return nil }
         return snapshot
     }
 
-    static func clear() {
-        try? FileManager.default.removeItem(at: saveURL)
+    /// ponytail: one-time fallback for legacy session.json (pre-multi-window).
+    static func loadLegacy() -> SessionSnapshot? {
+        let url = saveDir.appendingPathComponent("session.json")
+        guard let data = try? Data(contentsOf: url),
+              let snapshot = try? JSONDecoder().decode(SessionSnapshot.self, from: data)
+        else { return nil }
+        return snapshot
+    }
+
+    static func allWindowIds() -> [UUID] {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: saveDir, includingPropertiesForKeys: nil)
+        else { return [] }
+        return files.compactMap { url in
+            let name = url.lastPathComponent
+            guard name.hasPrefix("session_"), name.hasSuffix(".json") else { return nil }
+            return UUID(uuidString: String(name.dropFirst("session_".count).dropLast(".json".count)))
+        }
     }
 }
